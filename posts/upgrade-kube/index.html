@@ -1,0 +1,74 @@
+<!doctype html><html lang=en-us><head><meta charset=utf-8><title>Upgrading My Kubernetes Cluster | dequeue</title><meta name=description content="Personal blog mostly centered around solving technical problems and sharing lessons learned"><meta name=author content><link rel=apple-touch-icon sizes=180x180 href=http://example.org/apple-touch-icon.png><link rel=icon type=image/png sizes=32x32 href=http://example.org/favicon-32x32.png><link rel=icon type=image/png sizes=16x16 href=http://example.org/favicon-16x16.png><link rel=manifest href=http://example.org/site.webmanifest><link rel=mask-icon href=http://example.org/safari-pinned-tab.svg color=#00416a><meta name=msapplication-TileColor content="#00aba9"><meta name=theme-color content="#ffffff"><link rel=authorization_endpoint href=https://indieauth.com/auth><link rel=token_endpoint href=https://tokens.indieauth.com/token><link rel=stylesheet href=http://example.org/css/fonts.css><link rel=stylesheet href=http://example.org/css/style.css><meta name=viewport content="width=device-width,initial-scale=1"></head><body><div id=sitelogo><a class=glyph alt=Home href=http://example.org/><img src=http://example.org/images/site-logo.svg alt="Site Logo" height=64px width=64px></a></div><header><nav><div id=page-nav><div class=page-nav-item><a href=http://example.org/>Home</a></div></div></nav></header><div id=content><article class=h-entry><header><h1 class="post-title p-name">Upgrading My Kubernetes Cluster</h1><p class=post-date>Posted on
+<time class=dt-published datetime=2021-04-24T19:35:18-07:00>24 April, 2021 at 19:35 -0700</time> by <a href=http://example.org/ class="p-author h-card" rel=author>Steven Lotito</a></p></header><section class="content e-content"><h1 id=rough-guide-to-upgrading-k8s-cluster-with-kubeadm>Rough guide to upgrading k8s cluster with kubeadm</h1><p>Disclaimer: This is not the best way, just <em>a</em> way that works for me given the cluster topography I have (which was installed using kubeadm on ubuntu, and includes a non-HA etcd running in-cluster).</p><h2 id=on-the-control-plane--master-node>On the control plane / master node</h2><ol><li><p>Backup etcd (manually)
+You might need the info from the etcd pod (<code>kubectl -n kube-system describe po etcd-master</code>) to find the various certs/keys/etc, but they&rsquo;re probably at <code>/etc/kubernetes/pki/etcd/</code></p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>kubectl exec -n kube-system etcd-kmaster -- etcdctl <span style=color:#ae81ff>\
+</span><span style=color:#ae81ff></span>    --endpoints<span style=color:#f92672>=</span>https://127.0.0.1:2379 <span style=color:#ae81ff>\
+</span><span style=color:#ae81ff></span>    --cacert<span style=color:#f92672>=</span>/etc/kubernetes/pki/etcd/ca.crt <span style=color:#ae81ff>\
+</span><span style=color:#ae81ff></span>    --key<span style=color:#f92672>=</span>/etc/kubernetes/pki/etcd/server.key <span style=color:#ae81ff>\ </span>
+    --cert<span style=color:#f92672>=</span>/etc/kubernetes/pki/etcd/server.crt  <span style=color:#ae81ff>\
+</span><span style=color:#ae81ff></span>    snapshot save /var/lib/etcd/snapshot.db --ignore-daemonsets
+</code></pre></div></li><li><p>Backup important files locally (<em>really, these should also be backed-up on a different server</em>)</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-sh data-lang=sh>mkdir $HOME/backup
+sudo cp -r /etc/kubernetes/pki/etcd $HOME/backup/
+sudo cp /var/lib/etcd/snapshot.db $HOME/backup/<span style=color:#66d9ef>$(</span>date +%Y-%m-%d--%H-%M<span style=color:#66d9ef>)</span>-snapshot.db
+sudo cp /$HOME/kubeadm-init.yaml $HOME/backup
+</code></pre></div></li><li><p>Figure out to which version we&rsquo;re going to upgrade.</p><p><strong>Do NOT attempt to skip minor versions</strong> (i.e. go from 1.19 -> 1.20 -> 1.21, not 1.19 directly to 1.21)</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-sh data-lang=sh>sudo apt update
+sudo apt-cache madison kubeadm
+</code></pre></div><p>This will get you the full list of <code>kubeadm</code> versions available for your system/arch</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-text data-lang=text>kubeadm |  1.21.0-00 | https://apt.kubernetes.io kubernetes-xenial/main amd64 Packages
+kubeadm |  1.20.6-00 | https://apt.kubernetes.io kubernetes-xenial/main amd64 Packages
+kubeadm |  1.20.5-00 | https://apt.kubernetes.io kubernetes-xenial/main amd64 Packages
+kubeadm |  1.20.4-00 | https://apt.kubernetes.io kubernetes-xenial/main amd64 Packages
+kubeadm |  1.20.2-00 | https://apt.kubernetes.io kubernetes-xenial/main amd64 Packages
+kubeadm |  1.20.1-00 | https://apt.kubernetes.io kubernetes-xenial/main amd64 Packages
+kubeadm |  1.20.0-00 | https://apt.kubernetes.io kubernetes-xenial/main amd64 Packages
+kubeadm | 1.19.11-00 | https://apt.kubernetes.io kubernetes-xenial/main amd64 Packages
+kubeadm | 1.19.10-00 | https://apt.kubernetes.io kubernetes-xenial/main amd64 Packages
+kubeadm |  1.19.9-00 | https://apt.kubernetes.io kubernetes-xenial/main amd64 Packages
+kubeadm |  1.19.8-00 | https://apt.kubernetes.io kubernetes-xenial/main amd64 Packages
+kubeadm |  1.19.7-00 | https://apt.kubernetes.io kubernetes-xenial/main amd64 Packages
+kubeadm |  1.19.6-00 | https://apt.kubernetes.io kubernetes-xenial/main amd64 Packages
+...
+</code></pre></div><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-sh data-lang=sh>sudo kubeadm version
+kubeadm version: &amp;version.Info<span style=color:#f92672>{</span>Major:<span style=color:#e6db74>&#34;1&#34;</span>, Minor:<span style=color:#e6db74>&#34;20&#34;</span>, GitVersion:<span style=color:#e6db74>&#34;v1.19.6&#34;</span>, GitCommit:<span style=color:#e6db74>&#34;8a62859e515889f07e3e3be6a1080413f17cf2c3&#34;</span>, GitTreeState:<span style=color:#e6db74>&#34;clean&#34;</span>, BuildDate:<span style=color:#e6db74>&#34;2021-04-15T03:26:21Z&#34;</span>, GoVersion:<span style=color:#e6db74>&#34;go1.15.10&#34;</span>, Compiler:<span style=color:#e6db74>&#34;gc&#34;</span>, Platform:<span style=color:#e6db74>&#34;linux/amd64&#34;</span><span style=color:#f92672>}</span>
+</code></pre></div><p>We&rsquo;re going to go from 1.19.6-00 to 1.20.6-00, because that&rsquo;s what&rsquo;s currently available (and then we&rsquo;ll repeat this whole process to go from 1.20.6-00 to 1.21.0-00)</p></li><li><p>Remove the hold on kubeadm, update it, then freeze it again.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>sudo apt-mark unhold kubeadm
+sudo apt-get install -y kubeadm<span style=color:#f92672>=</span>1.20.6-00
+sudo apt-mark hold kubeadm
+</code></pre></div><p>Make sure it worked</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>sudo kubeadm version
+kubeadm version: &amp;version.Info<span style=color:#f92672>{</span>Major:<span style=color:#e6db74>&#34;1&#34;</span>, Minor:<span style=color:#e6db74>&#34;20&#34;</span>, GitVersion:<span style=color:#e6db74>&#34;v1.20.6&#34;</span>, GitCommit:<span style=color:#e6db74>&#34;8a62859e515889f07e3e3be6a1080413f17cf2c3&#34;</span>, GitTreeState:<span style=color:#e6db74>&#34;clean&#34;</span>, BuildDate:<span style=color:#e6db74>&#34;2021-04-15T03:26:21Z&#34;</span>, GoVersion:<span style=color:#e6db74>&#34;go1.15.10&#34;</span>, Compiler:<span style=color:#e6db74>&#34;gc&#34;</span>, Platform:<span style=color:#e6db74>&#34;linux/amd64&#34;</span><span style=color:#f92672>}</span>
+</code></pre></div></li><li><p>Cordon and drain the master node (There&rsquo;s a pod using local storage, so that extra <code>--delete-local-data</code> flag is necessary)</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>kubectl cordon kmaster
+kubectl drain kmaster --ignore-daemonsets --delete-local-data
+</code></pre></div><p>Check out the upgrade plan. We get two options, upgrade to latest in the v1.19 series (1.19.11) or upgrade to latest stable version (1.20.6)</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>sudo kubeadm upgrade plan
+sudo kubeadm upgrade apply v1.20.6
+</code></pre></div><p>Nothing else needed to be upgraded, so we see:</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-text data-lang=text>[upgrade/successful] SUCCESS! Your cluster was upgraded to &#34;v1.20.6&#34;. Enjoy!
+[upgrade/kubelet] Now that your control plane is upgraded, please proceed with upgrading your kubelets if you haven&#39;t already done so.
+</code></pre></div><p>If we look at the nodes at this point, it will still show 1.19.6, which is expected.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-sh data-lang=sh>kubectl get no
+NAME        STATUS                     ROLES                  AGE    VERSION
+kmaster     Ready,SchedulingDisabled   control-plane,master   128d   v1.19.6
+kworker01   Ready                      none                   125d   v1.19.6
+</code></pre></div></li><li><p>Now upgrade <code>kubelet</code> and <code>kubectl</code> to the SAME version as <code>kubeadm</code></p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>sudo apt-mark unhold kubelet kubectl
+sudo apt-get install -y  kubelet<span style=color:#f92672>=</span>1.20.6-00 kubectl<span style=color:#f92672>=</span>1.20.6-00
+sudo apt-mark hold kubelet kubectl
+</code></pre></div><p><em>Do not forget to freeze the kubelet/kubectl version again!</em></p><p>Restart the kubelet</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>sudo systemctl daemon-reload
+sudo systemctl restart kubelet.service
+</code></pre></div><p>If we look at the nodes now, we should see the master node running the updated version</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-sh data-lang=sh>kubectl get no
+NAME        STATUS                     ROLES                  AGE    VERSION
+kmaster     Ready,SchedulingDisabled   control-plane,master   128d   v1.20.6
+kworker01   Ready                      none                   125d   v1.19.6
+</code></pre></div></li><li><p>Uncordon it, and make sure it shows &lsquo;Ready&rsquo;</p></li><li><p>Now drain the worker(s) and then repeat roughly the same process on the worker nodes (and yes, <code>--force</code> is necessary because I&rsquo;m running something that either isn&rsquo;t set up correctly, or isn&rsquo;t playing nicely&mldr;)</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>kubectl drain kworker01 --ignore-daemonsets --delete-local-data --force
+</code></pre></div></li></ol><h2 id=on-the-worker-nodes>On the worker node(s)</h2><ol><li><p>Repeat the process from the master node</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>sudo apt-mark unhold kubeadm
+sudo apt-get install -y kubeadm<span style=color:#f92672>=</span>1.20.6-00
+sudo apt-mark hold kubeadm
+
+sudo kubeadm upgrade node
+
+sudo apt-mark unhold kubelet kubectl
+sudo apt-get install -y  kubelet<span style=color:#f92672>=</span>1.20.6-00 kubectl<span style=color:#f92672>=</span>1.20.6-00
+sudo apt-mark hold kubelet kubectl
+
+sudo systemctl daemon-reload
+sudo systemctl restart kubelet.service
+</code></pre></div><p>Back on the master node, we should be able to get the nodes and see that the worker is upgraded.</p><p>Since it is, we can uncordon it, and it should switch to &lsquo;Ready&rsquo;</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>kubectl get no
+NAME        STATUS                     ROLES                  AGE    VERSION
+kmaster     Ready                      control-plane,master   128d   v1.20.6
+kworker01   Ready                      none                   125d   v1.20.6
+</code></pre></div></li></ol><p>That&rsquo;s it! Rinse and repeat for 1.21 once the entire cluster is on 1.20</p></section><footer><a class="permalink u-url" href=http://example.org/posts/upgrade-kube/>🔗</a><hr class=post-underline><p class=post-tag>Tags for this post:
+<a href=http://example.org/tags/k8s class="post-tag p-category">k8s</a>
+<a href=http://example.org/tags/kubadm class="post-tag p-category">kubadm</a></p></footer></article></div><div id=footer><nav id=article-skip><div class=next><a alt="Newer article" href=http://example.org/posts/first-post/>&larr; Newer</a></div><div class=top><a alt="Top of page" href=#>Top</a></div><div class=prev><p>&nbsp;</p></div></nav><aside id=social><div id=social-icons><div class=icon-24x24><a class=glyph alt="Email me" href=mailto:steven.lotito@alumni.pitt.edu><img src=http://example.org/icons/envelope.svg height=24px width=24px></a></div><div class=icon-24x24><a class=glyph alt="GitHub profile" href=https://github.com/slowteetoe><img src=http://example.org/icons/github.svg height=24px width=24px></a></div><div class=icon-24x24><a class=glyph alt="LinkedIn profile" href=https://www.linkedin.com/in/slowteetoe><img src=http://example.org/icons/linkedin.svg height=24px width=24px></a></div></div></aside></div></body></html>
