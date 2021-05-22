@@ -1,0 +1,35 @@
+baseURL = "http://example.org/"
+languageCode = "en-us"
+title = "dequeue"
+theme = "indigo"
+
+[params]
+  Author = "Steven Lotito"
+  Avatar = "images/profilepic.png"
+  Biography = "Experienced software developer, novice woodworker"
+  ShowBio = false        
+  Description = "Personal blog mostly centered around solving technical problems and sharing lessons learned"
+  Subtitle = "Random musings from a software engineer"
+  PermalinkText = "🔗"
+
+  # Contact/social-network identifiers for social icons
+  EmailAddress = "email.address@example.com"
+#   FacebookUser = "FacebookUserName"
+#   FlickrUser = "FlickrUserName"
+  GitHubUser = "slowteetoe"
+#   GitLabUser = "GitLabUserName"
+#   GlitchUser = "GlitchUserName"
+#   KeybaseUser = "KeybaseUserName"
+  LinkedInUser = "slowteetoe"
+#   MediumUser = "MediumUserName"
+#   MicroBlogUser = "MicroBlogUserName"
+#   RedditUser = "RedditUserName"
+#   StackOverflowUser = "StackOverflowUserName"
+#   TumblrUser = "TumblrUserName"
+#   TwitterUser = "TwitterUserName"
+#   InstagramUser = "InstagramUserName"
+
+[params.indieWeb]  
+    # EmailAddress = "email.address@example.com"
+    Country = "USA"
+    City = "San Diego"
